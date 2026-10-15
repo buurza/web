@@ -1,0 +1,19 @@
+{
+  "name": "db-frontend",
+  "version": "1.0.0",
+  "description": "Frontend interface for TypeScript Auth Database",
+  "main": "server.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "start": "tsx server.ts",
+    "test": "echo \"Test suite coming soon\""
+  },
+  "keywords": ["express", "database", "frontend"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "tsx": "^4.23.15"
+  }
+}

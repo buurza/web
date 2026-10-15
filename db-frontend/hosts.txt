@@ -1,0 +1,4 @@
+# db-local hostname configuration for local development
+# Maps db.local to localhost for accessing the database interface
+127.0.0.1       db.local
+::1             db.local

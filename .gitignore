@@ -16,3 +16,10 @@ prisma/migrations/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Lock files (optional - shareable without lockfile)
+package-lock.json
+yarn.lock
+
+# Hosts file modifications
+hosts.txt

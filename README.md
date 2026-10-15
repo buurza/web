@@ -1,75 +1,3 @@
-# TypeScript Auth System 🚀
-
-Minimal authentication system built with **TypeScript**, **Prisma ORM**, and **SQLite**.
-
-## 📁 Project Structure
-
-```
-├── prisma/              # Database schema & migrations
-│   ├── schema.prisma    # Type-safe database definition
-│   └── dev.db           # SQLite database (auto-generated)
-├── src/
-│   └── auth.ts          # Login/register functions with type safety
-├── .env                 # Database connection string
-├── package.json         # Dependencies & scripts
-└── README.md            # This file
-```
-
-## 🔐 Features
-
-- ✅ Type-safe authentication (TypeScript)
-- ✅ Secure password hashing (bcrypt)
-- ✅ Prisma ORM for database operations
-- ✅ SQLite for local development
-- ✅ Ready to migrate to PostgreSQL/MySQL
-
-## 🚀 Getting Started
-
-### 1. Install Dependencies
-
-```bash
-npm install
-```
-
-### 2. Set Up Database
-
-```bash
-npm run db:migrate   # Create database from schema (PostgreSQL/SQLite)
-# OR
-npm run db:push      # Quick setup (no migrations, SQLite only)
-```
-
-### 3. Run the App
-
-```bash
-npm run dev          # Start with hot-reload
-npm start            # Production mode
-```
-
-## 📖 Usage
-
-```typescript
-import { register, login, emailExists } from './src/auth';
-
-// Register a new user (email & password will be hashed)
-const user = await register('user@example.com', 'password123', 'User Name');
-
-// Login
-const result = await login('user@example.com', 'password123');
-if (result) {
-  console.log(`Logged in as: ${result.email}`);
-}
-
-// Check if email exists before registering
-if (!await emailExists('user@example.com')) {
-  await register(...);
-}
-```
-
-## 🔧 Available Scripts
-
-| Script | Description |
-|--------|-------------|
 | `npm run dev` | Start TypeScript watcher with hot-reload |
 | `npm start` | Run compiled TypeScript |
 | `npm run db:migrate` | Create migrations & update DB |
@@ -77,20 +5,44 @@ if (!await emailExists('user@example.com')) {
 | `npm run db:studio` | Open Prisma Studio GUI (`http://localhost:5555`) |
 | `npm run db:reset` | Delete & recreate database |
 
-## 🌐 Hosting
+## 🌐 Hosting with db.local Hostname ✨
+
+### Quick Setup
+
+1. **Add hosts entry** (one-time):
+   ```bash
+   # Add this line to your hosts file
+   127.0.0.1       db.local
+   ```
+
+2. **Start the web server**:
+   ```bash
+   npm install          # Install dependencies
+   npx tsx db-local-server.ts  # Start at http://db.local
+   ```
+
+3. **Access via browser**:
+   - Visit `http://db.local` (no port needed!)
+   - API: `http://db.local/api/health`
+   - Auth test: `http://db.local/api/auth/test`
+
+### Configuration Files
+
+- [hosts.txt](./db-frontend/hosts.txt) - Hosts entry template for Windows/Mac/Linux
 
 ### Local Development (SQLite)
 ```bash
 DATABASE_URL="file:./prisma/dev.db"
 npm run db:migrate
-npm run dev
+npx tsx db-local-server.ts
+# Then open http://db.local in your browser
 ```
 
 ### Production (PostgreSQL/MySQL)
 1. Create PostgreSQL database on your host (Supabase, Railway, AWS RDS)
 2. Update `.env`: `DATABASE_URL="postgresql://user:pass@host:5432/dbname"`
 3. Run migrations: `npm run db:migrate`
-4. Deploy!
+4. Start server: `npx tsx db-local-server.ts`
 
 ## 🔒 Security Notes
 
@@ -105,7 +57,6 @@ npm run dev
 - [Prisma ORM](https://www.prisma.io/) - Database access layer
 - [bcryptjs](https://www.npmjs.com/package/bcryptjs) - Password hashing
 - [SQLite](https://www.sqlite.org/) / [PostgreSQL](https://www.postgresql.org/) - Database
+- [Express.js](https://expressjs.com/) - Web server (db-local-server.ts)
 
 ## 📄 License
-
-MIT

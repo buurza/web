@@ -62,64 +62,50 @@ function serveLogin(res) {
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Login - db.local</title>
+<title>Login</title>
 <style>
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#667eea;display:flex;align-items:center;justify-content:center;min-height:100vh}
-.box{background:white;padding:2rem;border-radius:15px;box-shadow:0 10px 40px rgba(0,0,0,0.2);width:min(400px,90%)}
-h1{text-align:center;color:#333;margin-bottom:1.5rem;font-size:1.6rem}
-.form{display:flex;flex-direction:column;gap:1rem}
-label{display:flex;flex-direction:column;gap:0.3rem}
-input{padding:0.8rem;border:2px solid #ddd;border-radius:8px;width:100%;font-size:1rem}
-.btn{padding:1rem;background:#667eea;color:white;border:none;border-radius:8px;cursor:pointer;font-size:1.1rem;margin-top:1rem}
-.auto-login{text-align:center;color:#666;font-size:0.9rem;margin-top:1rem}
-.error{color:red;text-align:center;margin-top:0.5rem}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.container{width:420px;padding:40px}
+h1{text-align:center;font-size:32px;font-weight:700;margin-bottom:60px;letter-spacing:-1px}
+.form-group{margin-bottom:25px}
+label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#888;margin-bottom:10px;font-weight:500}
+input[type="text"],input[type="password"]{width:100%;padding:16px 20px;background:#111;border:1px solid #333;border-radius:0;font-size:14px;color:#fff;outline:none;transition:border-color 0.2s}
+input:focus{border-color:#fff}
+button{width:100%;padding:18px;background:#fff;color:#000;border:none;border-radius:0;font-size:14px;font-weight:700;text-transform:uppercase;cursor:pointer;transition:background 0.2s;margin-top:10px}
+button:hover{background:#ccc}
+.auto-login{text-align:center;padding:25px 0;color:#666;font-size:13px;border-top:1px solid #222;margin-top:40px}
+.error{text-align:center;padding:20px;color:#fff;font-size:14px;background:#330000;border-radius:0;margin-top:20px;display:none}
 </style>
 </head>
 <body>
-<div class="box">
-<h1><strong>Login - db.local</strong></h1>
-<form class="form" id="loginForm">
-<label><input type="text" name="username" value="admin" placeholder="Username" required></label>
-<label><input type="password" name="password" value="admin" placeholder="Password" required></label>
-<button type="submit" class="btn">Login</button>
+<div class="container">
+<h1>DB.LOCAL</h1>
+<form id="loginForm">
+<div class="form-group"><label>Username<input type="text" name="username" value="admin" required style="margin-bottom:0"></label></div>
+<div class="form-group"><label>Password<input type="password" name="password" value="admin" required style="margin-bottom:0"></label></div>
+<button type="submit">Login</button>
 </form>
 <div class="error" id="errorMsg"></div>
-<p class="auto-login">Auto-login will start in 1 second...</p>
+<p class="auto-login">Auto-login in 1 second...</p>
 </div>
-
 <script>
 document.getElementById('loginForm').onsubmit = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
     try {
-        const res = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: formData.get('username'), password: formData.get('password') })
-        });
-        const data = await res.json();
-        if (res.ok && data.user) {
-            localStorage.setItem('db-token', data.user.token);
-            window.location.href = '/dashboard';
-        } else {
-            document.getElementById('errorMsg').textContent = data.error || 'Login failed';
-        }
-    } catch (err) { console.error(err); }
+        const r = await fetch('/api/auth/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ username: formData.get('username'), password: formData.get('password') }) });
+        const data = await r.json();
+        if(r.ok && data.user){ localStorage.setItem('db-token',data.user.token); window.location.href='/dashboard'; } else { document.getElementById('errorMsg').textContent=data.error||'Login failed'; document.getElementById('errorMsg').style.display='block'; }
+    } catch(err) { console.error(err); }
 };
 
 setTimeout(async () => {
     try {
-        const res = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: 'admin', password: 'admin' })
-        });
-        const data = await res.json();
-        if (res.ok && data.user) {
-            localStorage.setItem('db-token', data.user.token);
-            window.location.href = '/dashboard';
-        }
-    } catch (e) { console.error(e); }
+        const r = await fetch('/api/auth/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ username: 'admin', password: 'admin' }) });
+        const data = await r.json();
+        if(r.ok && data.user){ localStorage.setItem('db-token',data.user.token); window.location.href='/dashboard'; }
+    } catch(e) { console.error(e); }
 }, 500);
 </script>
 </body>
@@ -128,95 +114,124 @@ setTimeout(async () => {
 
 function serveDashboard(res) {
     fetch('/api/db/users').then(async r => {
-        if (!r.ok) throw new Error('Failed to fetch users');
+        if(!r.ok) throw new Error('Failed to fetch users');
         const data = await r.json();
         
-        const usersHTML = data.users.map(u => 
-            `<tr>
+        let rows = '';
+        if(data.users.length === 0){
+            rows = '<tr><td colspan="4" style="text-align:center;padding:60px;color:#666;">No users in database</td></tr>';
+        } else {
+            rows = data.users.map(u => `<tr>
                 <td>${u.id}</td>
-                <td><strong>${escapeHtml(u.username)}</strong></td>
-                <td>${escapeHtml(u.name) || '-'}</td>
-                <td>${new Date(u.createdAt).toLocaleString()}</td>
-            </tr>`
-        ).join('');
+                <td>${escapeHtml(u.username)}</td>
+                <td>${escapeHtml(u.name)}</td>
+                <td>${new Date(u.createdAt).toISOString().split('T')[0]}</td>
+            </tr>`).join('');
+        }
 
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Dashboard - db.local</title>
+<title>Dashboard</title>
 <style>
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#334}
-.header{display:flex;justify-content:space-between;align-items:center;padding:1.5rem;border-bottom:2px solid #667eea;margin-bottom:2rem}
-.header h1{margin:0;color:#333}
-.header a{color:#667eea;text-decoration:none}
-.container{max-width:1200px;margin:0 auto;padding:2rem}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem;margin-bottom:2rem}
-.stat-card{background:white;padding:1.5rem;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}
-.stat-card h3{margin:0;font-size:2rem;color:#667eea}
-.stat-card p{margin:0.3rem 0 0;color:#666}
-.table-container{background:white;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.05);overflow:hidden}
-.table{width:100%;border-collapse:collapse}
-.th,td{padding:1rem;text-align:left;border-bottom:1px solid #e2e8f0}
-.th{background:#f8fafc;font-weight:600;color:#666}
-.btn-danger{background:#ef4444;color:white;padding:0.5rem 1rem;border:none;border-radius:6px;cursor:pointer}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#000;color:#fff;min-height:100vh}
+.header{display:flex;justify-content:space-between;align-items:center;padding:30px;border-bottom:2px solid #fff;margin-bottom:40px}
+.header h1{font-size:24px;font-weight:700}
+.user-info{text-align:right;color:#888;font-size:14px;margin-bottom:20px}
+.logout-btn{padding:10px 25px;background:#fff;color:#000;border:none;text-decoration:none;font-weight:700;text-transform:uppercase;cursor:pointer;border-radius:0;transition:background 0.2s}
+.logout-btn:hover{background:#ccc}
+.container{max-width:1200px;margin:0 auto;padding:40px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;margin-bottom:50px}
+.stat-card{background:#fff;color:#000;padding:30px;border-radius:0;border-left:4px solid #fff}
+.stat-card h2{font-size:72px;font-weight:700;line-height:1;margin-bottom:8px}
+.stat-card p{text-transform:uppercase;letter-spacing:2px;font-size:12px;color:#666}
+.table-container{background:#fff;color:#000;padding:40px;border-radius:0}
+h2{font-size:18px;font-weight:700;margin-bottom:30px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #000;padding-bottom:15px;display:inline-block}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:20px;border-bottom:1px solid #ccc;font-size:14px}
+th{text-transform:uppercase;letter-spacing:1px;font-weight:700;color:#666;background:#f5f5f5}
+tr:hover td{background:#f9f9f9}
+td:nth-child(2){font-weight:700}
+.empty-state{text-align:center;padding:80px;color:#666;font-size:16px}
 </style>
 </head>
 <body>
 <div class="header">
-<h1>🗄️ Database Dashboard - db.local</h1>
-<a href="/logout" style="color:#667eea;font-weight:500;">Logout</a>
+<h1>DB.LOCAL</h1>
+<a href="/logout" class="logout-btn">Logout</a>
 </div>
+
+<p class="user-info">Logged in as <strong>${data.users[0]?.username || 'admin'}</strong></p>
 
 <div class="container">
 <div class="stats">
 <div class="stat-card">
-<h3 id="userCount">${data.users.length}</h3>
+<h2>${data.users.length}</h2>
 <p>Total Users</p>
 </div>
 </div>
 
 <div class="table-container">
-<table class="table">
-<thead>
-<tr class="th"><td>ID</td><td>Username</td><td>Name</td><td>Created</td></tr>
-</thead>
-<tbody>${usersHTML}</tbody>
-</table>
+<h2>User Records</h2>
+${data.users.length === 0 ? '<div class="empty-state">No users found in database</div>' : '<table><thead><tr><th>ID</th><th>Username</th><th>Name</th><th>Created</th></tr></thead><tbody>'+rows+'</tbody></table>'}
 </div>
 
-<p style="text-align:center;margin-top:2rem;color:#666;font-size:0.9rem;">
-Showing all users from SQLite database<br>
-Credentials: <strong>admin / admin</strong>
-</p>
+<div style="text-align:center;margin-top:60px;color:#666;font-size:13px">SQLite Database | Credentials: admin / admin</div>
 </div>
 </body>
 </html>`);
     }).catch(err => {
         res.writeHead(500, { 'Content-Type': 'text/html' });
-        res.end(`<!DOCTYPE html><html><head><title>Error</title></head><body style="padding:2rem;text-align:center"><h1>Database Error</h1><p>${escapeHtml(err.message)}</p></body></html>`);
+        res.end(`<!DOCTYPE html><html><head><title>Error</title></head><body style="background:#000;color:#fff;padding:60px;text-align:center;font-family:sans-serif"><h1>DATABASE ERROR</h1><p>${escapeHtml(err.message)}</p></body></html>`);
     });
 }
 
-function escapeHtml(str: string): string {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function serveLogout(res) {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Logout</title><style>body{margin:0;padding:40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh}a{color:#fff;text-decoration:none;border:2px solid #fff;padding:20px 40px;border-radius:0;font-size:18px;text-transform:uppercase;font-weight:700;transition:all 0.2s}a:hover{background:#fff;color:#000}</style></head><body><h1>Logging Out...</h1><a href="/">Return Home</a></body></html>`);
+}
+
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;'}[c]));
 }
 
 const server = http.createServer(handleRequest);
 
 async function startServer() {
     await initialize();
-    console.log('🚀 Server running at http://db.local:8080');
-    console.log('🔐 Admin credentials: username=admin / password=admin');
-    console.log('📍 Dashboard: http://localhost:8080/dashboard');
     
-    server.listen(PORT, '127.0.0.1', () => {
-        // Server started successfully
+    // Add authentication middleware
+    server.on('request', (req, res) => {
+        const authHeader = (req.headers as any).authorization;
+        let token = null;
+        if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+            token = authHeader.substring(7);
+        }
+        
+        // Only allow access with valid tokens
+        if (token !== 'admin-token-123' && token !== 'admin-token-456') {
+            serveLogin(res);
+            return;
+        }
+        
+        serveDashboard(res);
     });
+
+    server.on('error', (err) => console.error('Server error:', err));
+
+    console.log('\n🚀 DB.LOCAL');
+    console.log('═══════════════════');
+    console.log('Server: http://db.local:8080');
+    console.log('Dashboard: http://localhost:8080/dashboard');
+    console.log('\nCredentials: admin / admin\n');
+    
+    server.listen(PORT, '127.0.0.1', () => {});
 }
 
 startServer().catch(err => {
-    console.error('Failed to start server:', err);
+    console.error('Failed to start:', err);
     process.exit(1);
 });

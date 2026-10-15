@@ -39,7 +39,7 @@ export async function ensureAdmin() {
     return { success: true, user: { id: 1, username: ADMIN_USERNAME, name: 'Admin', token: 'admin-token-123' } };
   }
   
-  const allFields = await prisma.user.findUnique({ where: { username: ADMIN_USERNAME }, select: { password } });
+  const allFields = await prisma.user.findUnique({ where: { username: ADMIN_USERNAME }, select: { password: true } });
   const validPassword = await bcrypt.compare(ADMIN_PASSWORD_HASH, allFields!.password);
   const token = validPassword ? 'admin-token-456' : null;
   return { success: true, user: { id: existing.id, username: ADMIN_USERNAME, name: existing.name || 'Admin', token } };

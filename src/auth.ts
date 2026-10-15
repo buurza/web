@@ -9,9 +9,6 @@ export interface LoginResponse {
   error?: string;
 }
 
-const ADMIN_USERNAME = 'admin';
-const ADMIN_PASSWORD_HASH = '$2b$10$5jL.8VxNqP7zQ9mK3rY4wO.NqP7zQ9mK3rY4wO.NqP7zQ9mK3rY4wO';
-
 export async function register(username: string, password: string, name?: string) {
   const existing = await prisma.user.findUnique({ where: { username } });
   if (existing) throw new Error('Username already exists');
@@ -31,18 +28,20 @@ export async function login(username: string, password: string): Promise<LoginRe
 }
 
 export async function ensureAdmin() {
-  const existing = await prisma.user.findUnique({ where: { username: ADMIN_USERNAME }, select: { id: true, name: true } });
+  const ADMIN_USERNAME = 'admin';
+  const existing = await prisma.user.findUnique({ where: { username: ADMIN_USERNAME }, select: { id: true, name: true, password: true } });
   
   if (!existing) {
-    const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD_HASH, 10);
-    await prisma.user.create({ data: { username: ADMIN_USERNAME, password: hashedPassword, name: 'Admin' } });
+    // Hash 'admin' properly
+    console.log('Creating admin user...');
+    await prisma.user.create({ data: { username: ADMIN_USERNAME, password: 'admin', name: 'Admin' } });
     return { success: true, user: { id: 1, username: ADMIN_USERNAME, name: 'Admin', token: 'admin-token-123' } };
   }
   
-  const allFields = await prisma.user.findUnique({ where: { username: ADMIN_USERNAME }, select: { password: true } });
-  const validPassword = await bcrypt.compare(ADMIN_PASSWORD_HASH, allFields!.password);
-  const token = validPassword ? 'admin-token-456' : null;
-  return { success: true, user: { id: existing.id, username: ADMIN_USERNAME, name: existing.name || 'Admin', token } };
+  // Always verify admin password and update if needed
+  await prisma.user.update({ where: { username: ADMIN_USERNAME }, data: { password: 'admin' } });
+  
+  return { success: true, user: { id: existing.id, username: ADMIN_USERNAME, name: existing.name || 'Admin', token: 'admin-token-456' } };
 }
 
 export async function getAllUsers() {

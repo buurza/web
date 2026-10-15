@@ -8,7 +8,7 @@ async function initialize() {
 }
 
 // Single handler - all logic here to avoid state issues
-async function handleRequest(req, res) {
+function handleRequest(req, res) {
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
     
     // API calls first
@@ -20,11 +20,20 @@ async function handleRequest(req, res) {
 
         if (url.pathname === '/api/auth/login' && req.method === 'POST') {
             const chunks: Buffer[] = [];
+            
             req.on('data', chunk => chunks.push(chunk));
             req.on('end', () => {
                 try {
                     const body = Buffer.concat(chunks).toString('utf-8');
-                    const { username, password } = JSON.parse(body || '{}');
+                    if (!body) {
+                        res.writeHead(400).end(JSON.stringify({ error: 'Empty request body' }));
+                        return;
+                    }
+                    
+                    let parsed;
+                    try { parsed = JSON.parse(body); } catch(e) { throw new Error('Invalid JSON'); }
+                    
+                    const { username, password } = parsed || {};
                     const result = login(username, password);
 
                     if (result.success && result.user) {
@@ -67,82 +76,7 @@ async function handleRequest(req, res) {
         }
 
         // Serve dashboard for authenticated users
-        fetch('/api/db/users').then(async r => {
-            if (!r.ok) throw new Error('Failed to fetch users');
-            const data = await r.json();
-            
-            let rows = '';
-            if (data.users.length === 0) {
-                rows = '<tr><td colspan="4" style="text-align:center;padding:60px;color:#666;">No users in database</td></tr>';
-            } else {
-                rows = data.users.map(u => `<tr>
-                    <td>${u.id}</td>
-                    <td>${escapeHtml(u.username)}</td>
-                    <td>${escapeHtml(u.name)}</td>
-                    <td>${new Date(u.createdAt).toISOString().split('T')[0]}</td>
-                </tr>`).join('');
-            }
-
-            const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Dashboard</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#000;color:#fff;min-height:100vh}
-.header{display:flex;justify-content:space-between;align-items:center;padding:30px;border-bottom:2px solid #fff;margin-bottom:40px}
-.header h1{font-size:24px;font-weight:700}
-.user-info{text-align:right;color:#888;font-size:14px;margin-bottom:20px}
-.logout-btn{padding:10px 25px;background:#fff;color:#000;border:none;text-decoration:none;font-weight:700;text-transform:uppercase;cursor:pointer;border-radius:0;transition:background 0.2s}
-.logout-btn:hover{background:#ccc}
-.container{max-width:1200px;margin:0 auto;padding:40px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;margin-bottom:50px}
-.stat-card{background:#fff;color:#000;padding:30px;border-radius:0;border-left:4px solid #fff}
-.stat-card h2{font-size:72px;font-weight:700;line-height:1;margin-bottom:8px}
-.stat-card p{text-transform:uppercase;letter-spacing:2px;font-size:12px;color:#666}
-.table-container{background:#fff;color:#000;padding:40px;border-radius:0}
-h2{font-size:18px;font-weight:700;margin-bottom:30px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #000;padding-bottom:15px;display:inline-block}
-table{width:100%;border-collapse:collapse}
-th,td{text-align:left;padding:20px;border-bottom:1px solid #ccc;font-size:14px}
-th{text-transform:uppercase;letter-spacing:1px;font-weight:700;color:#666;background:#f5f5f5}
-tr:hover td{background:#f9f9f9}
-td:nth-child(2){font-weight:700}
-.empty-state{text-align:center;padding:80px;color:#666;font-size:16px}
-</style>
-</head>
-<body>
-<div class="header">
-<h1>DB.LOCAL</h1>
-<a href="/logout" class="logout-btn">Logout</a>
-</div>
-
-<p class="user-info">Logged in as <strong>${data.users[0]?.username || 'admin'}</strong></p>
-
-<div class="container">
-<div class="stats">
-<div class="stat-card">
-<h2>${data.users.length}</h2>
-<p>Total Users</p>
-</div>
-</div>
-
-<div class="table-container">
-<h2>User Records</h2>
-${data.users.length === 0 ? '<div class="empty-state">No users found in database</div>' : '<table><thead><tr><th>ID</th><th>Username</th><th>Name</th><th>Created</th></tr></thead><tbody>'+rows+'</tbody></table>'}
-</div>
-
-<div style="text-align:center;margin-top:60px;color:#666;font-size:13px">SQLite Database | Credentials: admin / admin</div>
-</div>
-</body>
-</html>`;
-
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end(html);
-        }).catch(err => {
-            res.writeHead(500, { 'Content-Type': 'text/html' });
-            res.end(`<!DOCTYPE html><html><head><title>Error</title></head><body style="background:#000;color:#fff;padding:60px;text-align:center;font-family:sans-serif"><h1>DATABASE ERROR</h1><p>${escapeHtml(err.message)}</p></body></html>`);
-        });
+        serveDashboard(res);
         return;
     }
 
@@ -206,7 +140,71 @@ setTimeout(async () => {
 </html>`);
 }
 
-function escapeHtml(str: string) {
+function serveDashboard(res, users = []) {
+    let rows = '';
+    if (users.length === 0) {
+        rows = '<tr><td colspan="4" style="text-align:center;padding:60px;color:#666;">No users in database</td></tr>';
+    } else {
+        rows = users.map(u => `<tr><td>${u.id}</td><td>${u.username}</td><td>${u.name || ''}</td><td>${new Date(u.createdAt).toISOString().split('T')[0]}</td></tr>`).join('');
+    }
+
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#000;color:#fff;min-height:100vh}
+.header{display:flex;justify-content:space-between;align-items:center;padding:30px;border-bottom:2px solid #fff;margin-bottom:40px}
+.header h1{font-size:24px;font-weight:700}
+.user-info{text-align:right;color:#888;font-size:14px;margin-bottom:20px}
+.logout-btn{padding:10px 25px;background:#fff;color:#000;border:none;text-decoration:none;font-weight:700;text-transform:uppercase;cursor:pointer;border-radius:0;transition:background 0.2s}
+.logout-btn:hover{background:#ccc}
+.container{max-width:1200px;margin:0 auto;padding:40px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;margin-bottom:50px}
+.stat-card{background:#fff;color:#000;padding:30px;border-radius:0;border-left:4px solid #fff}
+.stat-card h2{font-size:72px;font-weight:700;line-height:1;margin-bottom:8px}
+.stat-card p{text-transform:uppercase;letter-spacing:2px;font-size:12px;color:#666}
+.table-container{background:#fff;color:#000;padding:40px;border-radius:0}
+h2{font-size:18px;font-weight:700;margin-bottom:30px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #000;padding-bottom:15px;display:inline-block}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:20px;border-bottom:1px solid #ccc;font-size:14px}
+th{text-transform:uppercase;letter-spacing:1px;font-weight:700;color:#666;background:#f5f5f5}
+tr:hover td{background:#f9f9f9}
+td:nth-child(2){font-weight:700}
+.empty-state{text-align:center;padding:80px;color:#666;font-size:16px}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>DB.LOCAL</h1>
+<a href="/logout" class="logout-btn">Logout</a>
+</div>
+
+<p class="user-info">Logged in as <strong>${users[0]?.username || 'admin'}</strong></p>
+
+<div class="container">
+<div class="stats">
+<div class="stat-card">
+<h2>${users.length}</h2>
+<p>Total Users</p>
+</div>
+</div>
+
+<div class="table-container">
+<h2>User Records</h2>
+${users.length === 0 ? '<div class="empty-state">No users found in database</div>' : '<table><thead><tr><th>ID</th><th>Username</th><th>Name</th><th>Created</th></tr></thead><tbody>'+rows+'</tbody></table>'}
+</div>
+
+<div style="text-align:center;margin-top:60px;color:#666;font-size:13px">SQLite Database | Credentials: admin / admin</div>
+</div>
+</body>
+</html>`);
+}
+
+function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;'}[c]));
 }
 

@@ -1,59 +1,153 @@
 import { login, getAllUsers, ensureAdmin } from './src/auth';
 import http from 'http';
 
-const PORT = 8080;
+const PORT = 8091;
 
 async function initialize() {
     await ensureAdmin();
 }
 
-function handleAPI(req, res) {
-    if (req.url === '/api/health') {
-        return res.writeHead(200).end(JSON.stringify({ status: 'ok', service: 'db.local' }));
-    }
-
-    if (req.url === '/api/auth/login' && req.method === 'POST') {
-        let body = '';
-        req.on('data', chunk => { body += chunk; });
-        req.on('end', () => {
-            const { username, password } = JSON.parse(body || '{}');
-            const result = login(username, password);
-
-            if (result.success && result.user) {
-                res.writeHead(200).end(JSON.stringify({ success: true, user: { ...result.user, token: `token_${Date.now()}_${username}` } }));
-            } else {
-                res.writeHead(401).end(JSON.stringify(result));
-            }
-        });
-        return;
-    }
-
-    if (req.url === '/api/db/users' && req.method === 'GET') {
-        getAllUsers().then(users => {
-            res.writeHead(200).end(JSON.stringify({ success: true, users }));
-        }).catch(err => {
-            res.writeHead(500).end(JSON.stringify({ error: err.message }));
-        });
-        return;
-    }
-
-    serveLogin(res);
-}
-
-function handleRequest(req, res) {
-    if (req.method === 'GET') {
-        const url = new URL(req.url || '/', `http://${req.headers.host}`);
-        
-        if (url.pathname.startsWith('/api/')) {
-            handleAPI(req, res);
+// Single handler - all logic here to avoid state issues
+async function handleRequest(req, res) {
+    const url = new URL(req.url || '/', `http://${req.headers.host}`);
+    
+    // API calls first
+    if (url.pathname.startsWith('/api/')) {
+        if (url.pathname === '/api/health' && req.method === 'GET') {
+            res.writeHead(200).end(JSON.stringify({ status: 'ok', service: 'db.local' }));
             return;
         }
 
-        serveLogin(res);
+        if (url.pathname === '/api/auth/login' && req.method === 'POST') {
+            const chunks: Buffer[] = [];
+            req.on('data', chunk => chunks.push(chunk));
+            req.on('end', () => {
+                try {
+                    const body = Buffer.concat(chunks).toString('utf-8');
+                    const { username, password } = JSON.parse(body || '{}');
+                    const result = login(username, password);
+
+                    if (result.success && result.user) {
+                        res.writeHead(200).end(JSON.stringify({ success: true, user: { ...result.user, token: `token_${Date.now()}_${username}` } }));
+                    } else {
+                        res.writeHead(401).end(JSON.stringify(result));
+                    }
+                } catch (err) {
+                    res.writeHead(400).end(JSON.stringify({ error: 'Invalid request' }));
+                }
+            });
+            return;
+        }
+
+        if (url.pathname === '/api/db/users' && req.method === 'GET') {
+            getAllUsers().then(users => {
+                res.writeHead(200).end(JSON.stringify({ success: true, users }));
+            }).catch(err => {
+                res.writeHead(500).end(JSON.stringify({ error: err.message }));
+            });
+            return;
+        }
+
+        res.writeHead(404).end(JSON.stringify({ error: 'Not found' }));
         return;
     }
 
-    handleAPI(req, res);
+    // Non-API routes - check auth first
+    if (!url.pathname.startsWith('/api/')) {
+        const authHeader = (req.headers as any).authorization;
+        let token = null;
+        if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+            token = authHeader.substring(7);
+        }
+
+        // Redirect unauthenticated users to login
+        if (!token && !url.pathname.startsWith('/api/auth/')) {
+            res.writeHead(302, { 'Location': '/' });
+            return;
+        }
+
+        // Serve dashboard for authenticated users
+        fetch('/api/db/users').then(async r => {
+            if (!r.ok) throw new Error('Failed to fetch users');
+            const data = await r.json();
+            
+            let rows = '';
+            if (data.users.length === 0) {
+                rows = '<tr><td colspan="4" style="text-align:center;padding:60px;color:#666;">No users in database</td></tr>';
+            } else {
+                rows = data.users.map(u => `<tr>
+                    <td>${u.id}</td>
+                    <td>${escapeHtml(u.username)}</td>
+                    <td>${escapeHtml(u.name)}</td>
+                    <td>${new Date(u.createdAt).toISOString().split('T')[0]}</td>
+                </tr>`).join('');
+            }
+
+            const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#000;color:#fff;min-height:100vh}
+.header{display:flex;justify-content:space-between;align-items:center;padding:30px;border-bottom:2px solid #fff;margin-bottom:40px}
+.header h1{font-size:24px;font-weight:700}
+.user-info{text-align:right;color:#888;font-size:14px;margin-bottom:20px}
+.logout-btn{padding:10px 25px;background:#fff;color:#000;border:none;text-decoration:none;font-weight:700;text-transform:uppercase;cursor:pointer;border-radius:0;transition:background 0.2s}
+.logout-btn:hover{background:#ccc}
+.container{max-width:1200px;margin:0 auto;padding:40px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;margin-bottom:50px}
+.stat-card{background:#fff;color:#000;padding:30px;border-radius:0;border-left:4px solid #fff}
+.stat-card h2{font-size:72px;font-weight:700;line-height:1;margin-bottom:8px}
+.stat-card p{text-transform:uppercase;letter-spacing:2px;font-size:12px;color:#666}
+.table-container{background:#fff;color:#000;padding:40px;border-radius:0}
+h2{font-size:18px;font-weight:700;margin-bottom:30px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #000;padding-bottom:15px;display:inline-block}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:20px;border-bottom:1px solid #ccc;font-size:14px}
+th{text-transform:uppercase;letter-spacing:1px;font-weight:700;color:#666;background:#f5f5f5}
+tr:hover td{background:#f9f9f9}
+td:nth-child(2){font-weight:700}
+.empty-state{text-align:center;padding:80px;color:#666;font-size:16px}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>DB.LOCAL</h1>
+<a href="/logout" class="logout-btn">Logout</a>
+</div>
+
+<p class="user-info">Logged in as <strong>${data.users[0]?.username || 'admin'}</strong></p>
+
+<div class="container">
+<div class="stats">
+<div class="stat-card">
+<h2>${data.users.length}</h2>
+<p>Total Users</p>
+</div>
+</div>
+
+<div class="table-container">
+<h2>User Records</h2>
+${data.users.length === 0 ? '<div class="empty-state">No users found in database</div>' : '<table><thead><tr><th>ID</th><th>Username</th><th>Name</th><th>Created</th></tr></thead><tbody>'+rows+'</tbody></table>'}
+</div>
+
+<div style="text-align:center;margin-top:60px;color:#666;font-size:13px">SQLite Database | Credentials: admin / admin</div>
+</div>
+</body>
+</html>`;
+
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(html);
+        }).catch(err => {
+            res.writeHead(500, { 'Content-Type': 'text/html' });
+            res.end(`<!DOCTYPE html><html><head><title>Error</title></head><body style="background:#000;color:#fff;padding:60px;text-align:center;font-family:sans-serif"><h1>DATABASE ERROR</h1><p>${escapeHtml(err.message)}</p></body></html>`);
+        });
+        return;
+    }
+
+    // Serve login page
+    serveLogin(res);
 }
 
 function serveLogin(res) {
@@ -106,95 +200,13 @@ setTimeout(async () => {
         const data = await r.json();
         if(r.ok && data.user){ localStorage.setItem('db-token',data.user.token); window.location.href='/dashboard'; }
     } catch(e) { console.error(e); }
-}, 500);
+}, 1000);
 </script>
 </body>
 </html>`);
 }
 
-function serveDashboard(res) {
-    fetch('/api/db/users').then(async r => {
-        if(!r.ok) throw new Error('Failed to fetch users');
-        const data = await r.json();
-        
-        let rows = '';
-        if(data.users.length === 0){
-            rows = '<tr><td colspan="4" style="text-align:center;padding:60px;color:#666;">No users in database</td></tr>';
-        } else {
-            rows = data.users.map(u => `<tr>
-                <td>${u.id}</td>
-                <td>${escapeHtml(u.username)}</td>
-                <td>${escapeHtml(u.name)}</td>
-                <td>${new Date(u.createdAt).toISOString().split('T')[0]}</td>
-            </tr>`).join('');
-        }
-
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Dashboard</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#000;color:#fff;min-height:100vh}
-.header{display:flex;justify-content:space-between;align-items:center;padding:30px;border-bottom:2px solid #fff;margin-bottom:40px}
-.header h1{font-size:24px;font-weight:700}
-.user-info{text-align:right;color:#888;font-size:14px;margin-bottom:20px}
-.logout-btn{padding:10px 25px;background:#fff;color:#000;border:none;text-decoration:none;font-weight:700;text-transform:uppercase;cursor:pointer;border-radius:0;transition:background 0.2s}
-.logout-btn:hover{background:#ccc}
-.container{max-width:1200px;margin:0 auto;padding:40px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;margin-bottom:50px}
-.stat-card{background:#fff;color:#000;padding:30px;border-radius:0;border-left:4px solid #fff}
-.stat-card h2{font-size:72px;font-weight:700;line-height:1;margin-bottom:8px}
-.stat-card p{text-transform:uppercase;letter-spacing:2px;font-size:12px;color:#666}
-.table-container{background:#fff;color:#000;padding:40px;border-radius:0}
-h2{font-size:18px;font-weight:700;margin-bottom:30px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #000;padding-bottom:15px;display:inline-block}
-table{width:100%;border-collapse:collapse}
-th,td{text-align:left;padding:20px;border-bottom:1px solid #ccc;font-size:14px}
-th{text-transform:uppercase;letter-spacing:1px;font-weight:700;color:#666;background:#f5f5f5}
-tr:hover td{background:#f9f9f9}
-td:nth-child(2){font-weight:700}
-.empty-state{text-align:center;padding:80px;color:#666;font-size:16px}
-</style>
-</head>
-<body>
-<div class="header">
-<h1>DB.LOCAL</h1>
-<a href="/logout" class="logout-btn">Logout</a>
-</div>
-
-<p class="user-info">Logged in as <strong>${data.users[0]?.username || 'admin'}</strong></p>
-
-<div class="container">
-<div class="stats">
-<div class="stat-card">
-<h2>${data.users.length}</h2>
-<p>Total Users</p>
-</div>
-</div>
-
-<div class="table-container">
-<h2>User Records</h2>
-${data.users.length === 0 ? '<div class="empty-state">No users found in database</div>' : '<table><thead><tr><th>ID</th><th>Username</th><th>Name</th><th>Created</th></tr></thead><tbody>'+rows+'</tbody></table>'}
-</div>
-
-<div style="text-align:center;margin-top:60px;color:#666;font-size:13px">SQLite Database | Credentials: admin / admin</div>
-</div>
-</body>
-</html>`);
-    }).catch(err => {
-        res.writeHead(500, { 'Content-Type': 'text/html' });
-        res.end(`<!DOCTYPE html><html><head><title>Error</title></head><body style="background:#000;color:#fff;padding:60px;text-align:center;font-family:sans-serif"><h1>DATABASE ERROR</h1><p>${escapeHtml(err.message)}</p></body></html>`);
-    });
-}
-
-function serveLogout(res) {
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Logout</title><style>body{margin:0;padding:40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh}a{color:#fff;text-decoration:none;border:2px solid #fff;padding:20px 40px;border-radius:0;font-size:18px;text-transform:uppercase;font-weight:700;transition:all 0.2s}a:hover{background:#fff;color:#000}</style></head><body><h1>Logging Out...</h1><a href="/">Return Home</a></body></html>`);
-}
-
-function escapeHtml(str) {
+function escapeHtml(str: string) {
     return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;'}[c]));
 }
 
@@ -203,29 +215,10 @@ const server = http.createServer(handleRequest);
 async function startServer() {
     await initialize();
     
-    // Add authentication middleware
-    server.on('request', (req, res) => {
-        const authHeader = (req.headers as any).authorization;
-        let token = null;
-        if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
-            token = authHeader.substring(7);
-        }
-        
-        // Only allow access with valid tokens
-        if (token !== 'admin-token-123' && token !== 'admin-token-456') {
-            serveLogin(res);
-            return;
-        }
-        
-        serveDashboard(res);
-    });
-
-    server.on('error', (err) => console.error('Server error:', err));
-
     console.log('\n🚀 DB.LOCAL');
     console.log('═══════════════════');
-    console.log('Server: http://db.local:8080');
-    console.log('Dashboard: http://localhost:8080/dashboard');
+    console.log('Server: http://db.local:8091');
+    console.log('Dashboard: http://localhost:8091/dashboard');
     console.log('\nCredentials: admin / admin\n');
     
     server.listen(PORT, '127.0.0.1', () => {});

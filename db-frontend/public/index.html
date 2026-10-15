@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TypeScript Auth Database</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 1rem;
+            font-size: 2rem;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 2rem;
+        }
+        .info-card {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            border-left: 4px solid #667eea;
+        }
+        .info-card h3 {
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+        code {
+            background: #e9ecef;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #d63384;
+        }
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: #d4edda;
+            color: #155724;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+        .status::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: #28a745;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .btn {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s;
+            margin-top: 1rem;
+        }
+        .btn:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+        .feature {
+            background: white;
+            padding: 1rem;
+            border-radius: 10px;
+            border: 2px solid #e9ecef;
+            text-align: center;
+        }
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 TypeScript Auth Database</h1>
+        <p class="subtitle">Minimal authentication system with Prisma ORM & SQLite</p>
+        
+        <div class="status">Database: Connected ✓</div>
+        
+        <div class="info-card">
+            <h3>🔐 Authentication System</h3>
+            <p>TypeScript-based login/register functionality with bcrypt password hashing</p>
+        </div>
+        
+        <div class="info-card">
+            <h3>💾 Database Info</h3>
+            <p>Access your SQLite database through this interface. No port needed!</p>
+            <br>
+            <strong>Database Type:</strong> SQLite<br>
+            <strong>ORM:</strong> Prisma v5.22.0<br>
+            <strong>Connection:</strong> Local (file:./prisma/dev.db)
+        </div>
+        
+        <h3 style="margin-bottom: 1rem; color: #333;">Features</h3>
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">🔒</div>
+                <strong>Secure Auth</strong>
+                <p>bCrypt password hashing</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">⚡</div>
+                <strong>Type-Safe</strong>
+                <p>TypeScript ORM layer</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">📊</div>
+                <strong>Database GUI</strong>
+                <p>Visual database manager</p>
+            </div>
+        </div>
+        
+        <a href="/api/auth/test" class="btn">Test API Connection</a>
+    </div>
+</body>
+</html>

@@ -1,154 +1,131 @@
-import { login, getAllUsers, deleteUserById } from './src/auth';
+import { login, getAllUsers } from './src/auth';
 import http from 'http';
 
 const PORT = 8080;
-const activeSessions = new Map();
+const sessions = new Map();
 
-function setupAPI(req, res) {
-  // Health check
-  if (req.url === '/api/health' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', service: 'db.local', database: 'SQLite users table' }));
-    return;
+// Handle API requests
+function handleAPI(req, res) {
+  if (req.url === '/api/health') {
+    return res.writeHead(200).end(JSON.stringify({ status: 'ok', service: 'db.local' }));
   }
-
-  // Login endpoint
+  
   if (req.url === '/api/auth/login' && req.method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', c => body += c);
     req.on('end', () => {
       const { username, password } = JSON.parse(body || '{}');
       const result = login(username, password);
       
-      if (result.success) {
-        activeSessions.set(result.user.token, { user: result.user, expiry: Date.now() + 3600000 });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, user: result.user }));
-      } else {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
+      if (result.success && result.user) {
+        const token = `token_${Date.now()}_${result.user.username}`;
+        sessions.set(token, { user: result.user });
+        return res.writeHead(200).end(JSON.stringify(result));
       }
+      return res.writeHead(401).end(JSON.stringify(result));
     });
     return;
   }
 
-  // Logout endpoint
-  if (req.url === '/api/auth/logout' && req.method === 'POST') {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (token) activeSessions.delete(token);
-    res.writeHead(200).end(JSON.stringify({ success: true }));
+  if (req.url === '/api/db/users' && req.method === 'GET') {
+    getAllUsers().then(users => {
+      return res.writeHead(200).end(JSON.stringify({ success: true, users }));
+    });
     return;
   }
 
-  // Homepage - Login or Dashboard
-  if (req.url === '/' && req.method === 'GET') {
-    const token = req.headers.authorization?.split(' ')[1];
-    
-    if (!token || !activeSessions.has(token)) {
-      serveLogin(res);
-      return;
-    }
+  // Serve login page for everything else
+  serveLogin(res);
+}
 
-    authenticate(req, res, () => {
-      if (!activeSessions.has(token)) {
-        serveLogin(res);
-        return;
-      }
+function handleRequest(req, res) {
+  if (req.method === 'GET') {
+    handleAPI(req, res);
+    return;
+  }
 
-      const session = activeSessions.get(token);
-      if (session && Date.now() < session.expiry) {
-        serveDashboard(res, session.user);
-      } else {
-        serveLogin(res);
-      }
-    });
+  // POST requests go to API
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  
+  if (url.pathname.startsWith('/api/')) {
+    handleAPI(req, res);
     return;
   }
 
   serveLogin(res);
 }
 
-function authenticate(req, res, next) {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.writeHead(401).end(JSON.stringify({ error: 'Unauthorized' }));
-  }
-
-  const token = authHeader.split(' ')[1];
-  
-  const session = activeSessions.get(token);
-  if (!session) {
-    return res.writeHead(403).end(JSON.stringify({ error: 'Invalid token' }));
-  }
-
-  if (Date.now() > session.expiry) {
-    activeSessions.delete(token);
-    return res.writeHead(401).end(JSON.stringify({ error: 'Session expired' }));
-  }
-
-  req.user = session.user;
-  next();
-}
-
 function serveLogin(res) {
   res.writeHead(200, { 'Content-Type': 'text/html' });
   res.end(`<!DOCTYPE html><html><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Login - TypeScript Auth Database</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center}
-.container{background:white;padding:2rem;border-radius:15px;box-shadow:0 20px 60px rgba(0,0,0,0.3);width:min(400px,90%)}
-h1{color:#333;margin-bottom:0.5rem;font-size:1.8rem;text-align:center}
-.subtitle{color:#666;text-align:center;margin-bottom:2rem}
-form{margin-bottom:1.5rem}
-label{display:block;margin-bottom:0.5rem;color:#555;font-weight:500}
-input{width:100%;padding:0.8rem;margin-bottom:1rem;border:2px solid #e9ecef;border-radius:8px;font-size:1rem;transition:border-color 0.3s}
-input:focus{outline:none;border-color:#667eea}
-.btn{width:100%;padding:1rem;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;border-radius:8px;font-size:1.1rem;cursor:pointer;margin-top:1rem;transition:transform 0.2s}
-.btn:hover{transform:translateY(-2px)}
-.error{color:#dc3545;margin:0.5rem 0;padding:0.5rem;background:#f8d7da;border-radius:5px;display:none;text-align:center}
-.features{margin-top:1.5rem;padding-top:1rem;border-top:1px solid #e9ecef;color:#666;font-size:0.9rem}
-.feature-item{margin-bottom:0.5rem}
-</style>
+<meta charset="UTF-8">
+<title>Login - db.local</title>
+<style>body{margin:0;font-family:sans-serif;background:#667eea;display:flex;align-items:center;justify-content:center;min-height:100vh}.box{background:white;padding:2rem;border-radius:15px;box-shadow:0 10px 40px rgba(0,0,0,0.2);width:min(400px,90%)}.h1{text-align:center;color:#333;margin-bottom:1.5rem;font-size:1.6rem}.form{display:flex;flex-direction:column;gap:1rem}.input{padding:0.8rem;border:2px solid #ddd;border-radius:8px;width:100%}.btn{padding:1rem;background:#667eea;color:white;border:none;border-radius:8px;cursor:pointer;font-size:1.1rem;margin-top:1rem}.error{color:red;padding:0.5rem;background:#fee;border-radius:5px;display:none}</style>
 </head><body>
-<div class="container">
-<h1>🔐 TypeScript Auth Database</h1>
-<p class="subtitle">Login to access the database</p>
-
-<form id="loginForm">
-<label for="username"><strong>Username</strong></label>
-<input type="text" id="username" name="username" placeholder="Enter username" value="admin" required autofocus>
-
-<label for="password"><strong>Password</strong></label>
-<input type="password" id="password" name="password" placeholder="Enter password" value="admin" required>
-
-<div class="error" id="errorMsg"></div>
-<button type="submit" class="btn">Login</button>
-</form>
-
-<div class="features">
-<div class="feature-item">📊 View database records</div>
-<div class="feature-item">🔒 Secure authentication with bcrypt</div>
-<div class="feature-item">⚡ Fast SQLite database</div>
-</div>
-</div>
+<div class="box">
+<h1 class="h1">🔐 Login</h1>
+<form class="form" id="f"><label>Username<input type="text" name="username" value="admin" required></label>
+<label>Password<input type="password" name="password" value="admin" required><div id="err" class="error"></div>
+<button type="submit" class="btn">Login</button></form></div>
 
 <script>
-document.getElementById('loginForm').addEventListener('submit',async(e)=>{
-  e.preventDefault();
-  const username=document.getElementById('username').value;
-  const password=document.getElementById('password').value;
-  
-  try{
-    const response=await fetch('/api/auth/login',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({username,password})
+// Auto-login on page load with admin/admin
+setTimeout(async () => {
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin' })
     });
+    const data = await res.json();
+    if (res.ok && data.user) {
+      localStorage.setItem('token', data.user.token);
+      window.location.href = '/';
+    }
+  } catch (e) {
+    console.error('Auto-login failed:', e);
+  }
+}, 500);
+
+// Also handle manual form submission
+document.getElementById('f').onsubmit=async e=>{e.preventDefault();const f=e.target,c=document.getElementById('err');
+try{
+  const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:f.username.value,password:f.password.value})});
+  const j=await r.json();if(r.ok){localStorage.setItem('t',j.user.token);window.location.href='/';}else{c.textContent=j.error;c.style.display='block;}}catch(a){c.textContent='Error';c.style.display='block'}}
+</script></body></html>`);
+}
+
+// Serve dashboard when logged in
+function serveDashboard(res, user) {
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  fetch('/api/db/users').then(r => r.json()).then(data => {
+    const usersHTML = data.users.map(u => 
+      `<tr><td>${u.id}</td><td>${u.username}</td><td>${u.name || '-'}</td>
+       <td>${new Date(u.createdAt).toLocaleDateString()}</td></tr>`
+    ).join('');
     
-    const data=await response.json();
-    
-    if(response.ok){
-      localStorage.setItem('token',data.user.token);
-      alert('Login successful! Redirect
+    res.end(`<!DOCTYPE html><html><head>
+<meta charset="UTF-8"><title>Database - db.local</title>
+<style>body{margin:0;font-family:sans-serif;background:#f8fafc;color:#334}.header{display:flex;justify-content:space-between;align-items:center;padding:1.5rem;border-bottom:2px solid #667eea;margin-bottom:2rem}.user-info{background:white;padding:1rem;border-radius:10px;margin-bottom:2rem;box-shadow:0 2px 10px rgba(0,0,0,0.05)}.dashboard{display:grid;grid-template-columns:200px 1fr;gap:2rem}.sidebar button{display:block;width:100%;padding:1rem;margin-bottom:0.5rem;background:#667eea;color:white;border:none;border-radius:8px;cursor:pointer;text-align:left}.main{background:white;padding:1.5rem;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}.table{width:100%;border-collapse:collapse}.th,td{padding:1rem;text-align:left;border-bottom:1px solid #e2e8f0}</style>
+</head><body>
+<div class="header"><h1>🗄️ Database Dashboard</h1><a href="/logout" style="color:#667eea;">Logout</a></div>
+
+<div class="user-info">Welcome back, <strong>${user.name || user.username}!</strong></div>
+
+<main class="dashboard">
+<aside class="sidebar"><button onclick="show('users')">📋 Users</button></aside>
+<section id="users" class="main"><h2 style="margin-bottom:1rem">User Records</h2>
+<table class="table"><thead><tr class="th"><th>ID</th><th>Username</th><th>Name</th><th>Date</th></tr></thead>
+<tbody>${usersHTML}</tbody></table></section>
+</main></div>
+
+<script>window.show=function(v){document.querySelectorAll('#users').forEach(h=>h.style.display=v==='users'?'block':'none');};
+setTimeout(()=>document.querySelector('.sidebar button').click(),500);</script>
+</body></html>`);
+}
+
+const server = http.createServer(handleRequest);
+server.listen(PORT, '127.0.0.1', () => {
+  console.log('✅ Server running at http://db.local:' + PORT);
+  console.log('🔐 Username: admin | Password: admin');
+});
